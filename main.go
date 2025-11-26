@@ -7,13 +7,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Order struct {
-	ID          int  `json:"ID"`
-	UserID      int  `json:"userID"`
-	SaveDate    int  `json:"saveDate"`
-	OrderIssued bool `json:"orderIssued"`
+	ID          int       `json:"ID"`
+	UserID      int       `json:"userID"`
+	SaveDate    time.Time `json:"saveDate"`
+	OrderIssued bool      `json:"orderIssued"`
 }
 
 func readOrders(file string) ([]Order, error) {
@@ -69,15 +70,43 @@ func ReceivingOrder(newOrder Order, filename string) error {
 
 }
 
-//func deleteOrder(order Order, filename string) error {
-//	orders, err := readOrders(filename)
-//	if err != nil {
-//		return err
-//	}
-//
-//	deleteOrder := func () {}
-//
-//}
+func statusCheck(orders []Order, id int) (bool, int, error) {
+	now := time.Date(2023, 12, 25, 0, 0, 0, 0, time.UTC)
+	for i, order := range orders { //в чем разница между конструкцией for _, order = и for order =
+		if order.ID == id {
+			if order.OrderIssued {
+				return false, -1, fmt.Errorf("заказ с ID %d уже выдан", id)
+			}
+			if order.SaveDate.Before(now) {
+				return false, -1, fmt.Errorf("заказ с ID %d еще не просрочен", id)
+			}
+
+			return true, i, nil
+		}
+	}
+
+	return false, -1, fmt.Errorf("заказ с ID %d не найден или уже выдан", id)
+}
+
+func deleteOrder(id int, filename string) error {
+	orders, err := readOrders(filename)
+	if err != nil {
+		return err
+	}
+
+	status, index, err := statusCheck(orders, id)
+	if err != nil {
+		return err
+	}
+
+	if status {
+		orders = append(orders[:index], orders[index+1:]...)
+	} else {
+		return fmt.Errorf("невозможно удалить заказ с ID %d: не пройдены проверки", id)
+	}
+
+	return writeOrder(filename, orders)
+}
 
 func getIntInput(text string, scanner *bufio.Scanner) (int, error) {
 	fmt.Println(text)
@@ -85,7 +114,14 @@ func getIntInput(text string, scanner *bufio.Scanner) (int, error) {
 	input := strings.TrimSpace(scanner.Text())
 
 	return strconv.Atoi(input)
+}
 
+func getDateInput(text string, scanner *bufio.Scanner) (time.Time, error) {
+	fmt.Println(text)
+	scanner.Scan()
+	input := strings.TrimSpace(scanner.Text())
+
+	return time.Parse("02.01.2006", input)
 }
 
 func main() {
@@ -125,7 +161,7 @@ func main() {
 				fmt.Println("Ошибка ввода ID-пользователя: ", err)
 				continue
 			}
-			saveDate, err := getIntInput("Введите дату хранения: ", scanner)
+			saveDate, err := getDateInput("Введите дату хранения: ", scanner)
 			if err != nil {
 				fmt.Println("Ошибка ввода даты хранения: ", err)
 				continue
@@ -144,17 +180,18 @@ func main() {
 			if err != nil {
 				fmt.Println(err)
 			}
-		case "2":
-			//id, err := getIntInput("Введите ID заказа для курьера", scanner)
-			//if err != nil {
-			//	fmt.Println("Ошибка ввода ID-заказа")
-			//	continue
-			//}
 
-			//err = deleteOrder(id, "data.json")
-			//if err != nil {
-			//	fmt.Println(err)
-			//}
+		case "2":
+			id, err := getIntInput("Введите ID заказа для курьера", scanner)
+			if err != nil {
+				fmt.Println("Ошибка ввода ID-заказа")
+				continue
+			}
+
+			err = deleteOrder(id, "data.json")
+			if err != nil {
+				fmt.Println(err)
+			}
 
 		case "3":
 			fmt.Println(3)
